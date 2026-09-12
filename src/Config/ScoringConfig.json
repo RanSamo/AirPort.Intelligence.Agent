@@ -1,0 +1,167 @@
+{
+  "$comment": [
+    "Scoring methodology configuration. Bump 'version' whenever anything here changes:",
+    "it is hashed into configVersion, which is part of every cache key, so a weight change",
+    "correctly invalidates previously cached scores instead of serving stale numbers.",
+    "",
+    "Composite:",
+    "  Need   = needComposition.constraint * Constraint + needComposition.latentDemand * LatentDemand",
+    "  Payoff = Monetization",
+    "  Raw    = Need^need * Payoff^payoff     (geometric, default)",
+    "         | need*Need + payoff*Payoff     (arithmetic, user-switchable)",
+    "  Score  = Raw * feasibilityMultiplier",
+    "",
+    "Weights are judgement calls, not facts. That is exactly why the aggregation mode is",
+    "switchable and why SensitivityAnalyzer resamples these weights to report whether a",
+    "ranking is robust or an artefact of how they were set."
+  ],
+
+  "version": "1.1.0",
+  "aggregation": "geometric",
+  "defaultProfile": "balanced",
+
+  "needComposition": {
+    "constraint": 0.55,
+    "latentDemand": 0.45
+  },
+
+  "geometricExponents": {
+    "need": 0.65,
+    "payoff": 0.35
+  },
+
+  "normalization": {
+    "winsorLowerPercentile": 0.05,
+    "winsorUpperPercentile": 0.95,
+    "logisticSteepness": 1.1,
+    "subscoreFloor": 1.0
+  },
+
+  "coverage": {
+    "lowConfidenceThreshold": 0.6,
+    "minimumForRanking": 0.5
+  },
+
+  "spill": {
+    "kFactor": 0.35
+  },
+
+  "$scaleComment": [
+    "Metrics are normalized within an airport's FAA hub-class cohort, so a raw score measures",
+    "INTENSITY relative to peers, not the size of the opportunity. Without this adjustment a",
+    "best-in-class nonhub outranks a very good mega-hub — Bangor placed above Boston Logan as a",
+    "terminal expansion candidate, which is not a defensible answer for an investor.",
+    "",
+    "The tilt is LOGARITHMIC on purpose. Weighting linearly by passengers would turn the ranking",
+    "into a size league table and throw away everything the pillars measure.",
+    "",
+    "Switchable, like the aggregation mode, because 'how much does deal size matter' is a",
+    "strategic choice rather than a fact about the data."
+  ],
+  "scale": {
+    "weighting": "moderate",
+    "floorEnplanements": 10000,
+    "ceilingEnplanements": 50000000,
+    "bands": {
+      "none": { "min": 1.0, "max": 1.0 },
+      "moderate": { "min": 0.75, "max": 1.15 },
+      "strong": { "min": 0.5, "max": 1.35 }
+    }
+  },
+
+  "$sensitivityComment": [
+    "The weights below are judgement calls, not facts. Sensitivity analysis resamples them and",
+    "re-ranks, so the agent can distinguish a real finding from an artefact of how they were set.",
+    "On the first live New England run, three airports landed within 0.1 points and were printed",
+    "as ranks 2/3/4 — an ordering the data does not support.",
+    "",
+    "weightSpread is a log-normal sigma: 0.35 means a typical draw moves a weight by about 40%,",
+    "and halving is exactly as likely as doubling.",
+    "seed is fixed so the same question always returns the same robustness figure."
+  ],
+  "sensitivity": {
+    "draws": 400,
+    "weightSpread": 0.35,
+    "topN": 5,
+    "robustThreshold": 0.8,
+    "tieSwapThreshold": 0.25,
+    "seed": 20260913
+  },
+
+  "profiles": {
+    "terminal": {
+      "id": "terminal",
+      "label": "Terminal expansion",
+      "description": "Gates, holdrooms, concessions and international facilities. Weighted toward passenger throughput per gate, aircraft upgauging and high-yield traffic mix rather than runway queueing.",
+      "needComposition": { "constraint": 0.5, "latentDemand": 0.5 },
+      "metricWeights": {
+        "peak_hour_passengers": 3.0,
+        "seats_per_departure_trend": 2.5,
+        "nas_delay_share": 1.0,
+        "dep_delay_15_rate": 0.75,
+        "taxi_out_p50": 0.5,
+        "taxi_out_p90": 0.5,
+
+        "avg_load_factor": 2.5,
+        "spill_rate": 3.0,
+        "enplanement_cagr_3y": 2.5,
+        "pct_months_lf_gt_85": 2.0,
+        "seat_cagr_3y": 1.5,
+
+        "intl_pax_share": 3.0,
+        "long_haul_share": 2.0,
+        "avg_passenger_trip_miles": 1.5
+      }
+    },
+
+    "airfield": {
+      "id": "airfield",
+      "label": "Airfield expansion",
+      "description": "Runways, taxiways and apron. Weighted toward queueing delay, system-cause congestion and peak-hour saturation rather than terminal throughput.",
+      "needComposition": { "constraint": 0.7, "latentDemand": 0.3 },
+      "metricWeights": {
+        "taxi_out_p90": 3.0,
+        "taxi_out_p50": 2.5,
+        "nas_delay_share": 3.0,
+        "dep_delay_15_rate": 2.0,
+        "peak_hour_passengers": 1.0,
+        "seats_per_departure_trend": 0.75,
+
+        "enplanement_cagr_3y": 2.0,
+        "seat_cagr_3y": 2.0,
+        "avg_load_factor": 1.5,
+        "spill_rate": 1.5,
+        "pct_months_lf_gt_85": 1.0,
+
+        "intl_pax_share": 1.5,
+        "long_haul_share": 2.0,
+        "avg_passenger_trip_miles": 1.0
+      }
+    },
+
+    "balanced": {
+      "id": "balanced",
+      "label": "Balanced",
+      "description": "No assumption about which kind of capital project is on the table. Every metric carries its registry default weight.",
+      "needComposition": { "constraint": 0.55, "latentDemand": 0.45 },
+      "metricWeights": {
+        "taxi_out_p50": 1.5,
+        "taxi_out_p90": 1.5,
+        "dep_delay_15_rate": 1.5,
+        "nas_delay_share": 2.0,
+        "peak_hour_passengers": 2.0,
+        "seats_per_departure_trend": 1.5,
+
+        "enplanement_cagr_3y": 2.0,
+        "seat_cagr_3y": 1.5,
+        "avg_load_factor": 2.0,
+        "pct_months_lf_gt_85": 1.5,
+        "spill_rate": 2.0,
+
+        "intl_pax_share": 2.0,
+        "long_haul_share": 1.5,
+        "avg_passenger_trip_miles": 1.5
+      }
+    }
+  }
+}

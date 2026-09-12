@@ -1,0 +1,102 @@
+{
+  "$comment": [
+    "Named regions as explicit state sets.",
+    "'New England' appears in no data source, so colloquial regions are defined here as data",
+    "rather than left to the model to interpret. That keeps region queries reproducible: the",
+    "same question returns the same airport set every time, and the definition is auditable.",
+    "Metro-level questions ('LA airports', 'Bay Area') are handled by proximity search against",
+    "airport coordinates instead, because metro areas do not map onto state boundaries."
+  ],
+  "regions": [
+    {
+      "id": "new_england",
+      "label": "New England",
+      "aliases": ["new england", "northeast corner", "ne states"],
+      "states": ["ME", "NH", "VT", "MA", "RI", "CT"]
+    },
+    {
+      "id": "mid_atlantic",
+      "label": "Mid-Atlantic",
+      "aliases": ["mid atlantic", "mid-atlantic", "middle atlantic"],
+      "states": ["NY", "NJ", "PA", "DE", "MD", "DC", "VA", "WV"]
+    },
+    {
+      "id": "southeast",
+      "label": "Southeast",
+      "aliases": ["southeast", "south east", "the south"],
+      "states": ["NC", "SC", "GA", "FL", "AL", "MS", "TN", "KY", "AR", "LA"]
+    },
+    {
+      "id": "midwest",
+      "label": "Midwest",
+      "aliases": ["midwest", "mid west", "middle america"],
+      "states": ["OH", "MI", "IN", "IL", "WI", "MN", "IA", "MO", "ND", "SD", "NE", "KS"]
+    },
+    {
+      "id": "great_lakes",
+      "label": "Great Lakes",
+      "aliases": ["great lakes"],
+      "states": ["OH", "MI", "IN", "IL", "WI", "MN", "NY", "PA"]
+    },
+    {
+      "id": "southwest",
+      "label": "Southwest",
+      "aliases": ["southwest", "south west"],
+      "states": ["TX", "OK", "NM", "AZ"]
+    },
+    {
+      "id": "mountain_west",
+      "label": "Mountain West",
+      "aliases": ["mountain west", "the rockies", "rocky mountains"],
+      "states": ["CO", "UT", "NV", "ID", "MT", "WY"]
+    },
+    {
+      "id": "west_coast",
+      "label": "West Coast",
+      "aliases": ["west coast", "pacific coast"],
+      "states": ["CA", "OR", "WA"]
+    },
+    {
+      "id": "pacific_northwest",
+      "label": "Pacific Northwest",
+      "aliases": ["pacific northwest", "pnw", "north west"],
+      "states": ["WA", "OR", "ID"]
+    },
+    {
+      "id": "california",
+      "label": "California",
+      "aliases": ["california", "cali"],
+      "states": ["CA"]
+    },
+    {
+      "id": "texas",
+      "label": "Texas",
+      "aliases": ["texas"],
+      "states": ["TX"]
+    },
+    {
+      "id": "florida",
+      "label": "Florida",
+      "aliases": ["florida"],
+      "states": ["FL"]
+    },
+    {
+      "id": "alaska",
+      "label": "Alaska",
+      "aliases": ["alaska"],
+      "states": ["AK"]
+    },
+    {
+      "id": "hawaii",
+      "label": "Hawaii",
+      "aliases": ["hawaii", "hawaiian islands"],
+      "states": ["HI"]
+    },
+    {
+      "id": "us_territories",
+      "label": "US Territories",
+      "aliases": ["territories", "us territories", "caribbean and pacific territories"],
+      "states": ["PR", "VI", "GU", "AS", "MP", "U-A"]
+    }
+  ]
+}

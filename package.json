@@ -1,0 +1,41 @@
+{
+  "name": "airport-intelligence-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI agent for ranking US airport modernization investment opportunities from public aviation data",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "ingest": "tsx src/Scripts/Ingest.ts",
+    "build:metrics": "tsx src/Scripts/BuildMetrics.ts",
+    "verify:coverage": "tsx src/Scripts/VerifyCoverage.ts",
+    "inspect": "tsx src/Scripts/InspectSnapshot.ts",
+    "validate:domestic": "tsx src/Scripts/ValidateDomesticConsistency.ts",
+    "validate:config": "tsx src/Scripts/ValidateScoringConfig.ts",
+    "rank": "tsx src/Scripts/Rank.ts",
+    "chat": "tsx src/Scripts/Chat.ts",
+    "server": "tsx src/Server/App.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "better-sqlite3": "^11.7.0",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.0",
+    "yauzl": "^3.2.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "@types/yauzl": "^2.10.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

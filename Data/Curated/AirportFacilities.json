@@ -1,0 +1,92 @@
+{
+  "$comment": [
+    "HAND-CURATED FACILITY DATA. No public API publishes gate counts, runway capacity or slot",
+    "rules, so these are curated and every value carries the source it came from.",
+    "",
+    "HOUSE RULE — NO GUESSING. An airport absent from this file simply has no gate count. The",
+    "Constraint pillar then reweights over its remaining metrics, coverage drops, and the user is",
+    "told which airports were excluded and why. Nothing is ever estimated, interpolated, or",
+    "inferred from runway count.",
+    "",
+    "CURATION STATUS: feasibility flags are complete for the regulated airports (FAA slot control",
+    "and perimeter rules are published regulatory facts). Gate counts are being curated in",
+    "priority order: FAA Core 30, then benchmark-question airports, then New England commercial",
+    "service, then the remainder of the top 70. Airports not yet curated are simply absent.",
+    "",
+    "feasibility flags apply to EVERY airport via defaults; only exceptions are listed here."
+  ],
+
+  "defaults": {
+    "feasibility": {
+      "slotControlled": false,
+      "perimeterRule": false,
+      "landConstrained": false
+    }
+  },
+
+  "airports": [
+    {
+      "iata": "JFK",
+      "feasibility": { "slotControlled": true, "perimeterRule": false, "landConstrained": false },
+      "$note": "FAA Level 3 slot-coordinated. Added terminal capacity cannot be filled with additional flights without slot relief, which caps the realizable upside of terminal capex."
+    },
+    {
+      "iata": "LGA",
+      "feasibility": { "slotControlled": true, "perimeterRule": true, "landConstrained": true },
+      "$note": "FAA Level 3 slot-coordinated, 1,500-mile perimeter rule, and physically boxed in by Flushing Bay and the Grand Central Parkway. Airfield expansion is effectively impossible, which is why its recent capital programme was entirely terminal replacement."
+    },
+    {
+      "iata": "DCA",
+      "feasibility": { "slotControlled": true, "perimeterRule": true, "landConstrained": true },
+      "$note": "FAA Level 3 slot-coordinated, 1,250-mile perimeter rule, hemmed in by the Potomac and restricted airspace."
+    },
+    {
+      "iata": "EWR",
+      "feasibility": { "slotControlled": true, "perimeterRule": false, "landConstrained": false },
+      "$note": "FAA schedule-limited. Capacity is administratively constrained rather than purely physical."
+    },
+    {
+      "iata": "SNA",
+      "feasibility": { "slotControlled": false, "perimeterRule": false, "landConstrained": true },
+      "$note": "Single short air-carrier runway, a night curfew, and a hard cap on annual passengers and flight operations under the county access agreement. Growth must come from larger aircraft, not more of them — which is exactly the upgauging pattern that pressures terminals first."
+    },
+    {
+      "iata": "SAN",
+      "feasibility": { "slotControlled": false, "perimeterRule": false, "landConstrained": true },
+      "$note": "Single runway, boxed in by downtown San Diego, the bay and Marine Corps Recruit Depot. No airfield expansion is possible; vertical terminal redevelopment is the only lever."
+    },
+    {
+      "iata": "MDW",
+      "feasibility": { "slotControlled": false, "perimeterRule": false, "landConstrained": true },
+      "$note": "Bounded on all four sides by city streets within a one-square-mile site."
+    },
+    {
+      "iata": "BUR",
+      "feasibility": { "slotControlled": false, "perimeterRule": false, "landConstrained": true },
+      "$note": "Constrained site with a night curfew, in a dense part of the San Fernando Valley."
+    },
+    {
+      "iata": "LGB",
+      "feasibility": { "slotControlled": false, "perimeterRule": false, "landConstrained": true },
+      "$note": "Operates under a noise ordinance capping the number of air-carrier flight slots, which limits how much added terminal capacity could be used."
+    }
+  ],
+
+  "sources": {
+    "slotControlled": {
+      "label": "FAA slot administration and schedule facilitation",
+      "url": "https://www.faa.gov/air_traffic/publications/slot_administration",
+      "retrievedDate": "2026-09-12"
+    },
+    "perimeterRule": {
+      "label": "FAA / Port Authority perimeter rule documentation",
+      "url": "https://www.faa.gov/air_traffic/publications/slot_administration",
+      "retrievedDate": "2026-09-12"
+    },
+    "landConstrained": {
+      "label": "Airport master plans and FAA Airport Capacity Profiles",
+      "url": "https://www.faa.gov/airports/planning_capacity",
+      "retrievedDate": "2026-09-12"
+    }
+  }
+}
