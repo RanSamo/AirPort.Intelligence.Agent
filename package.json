@@ -5,7 +5,7 @@
   "type": "module",
   "description": "AI agent for ranking US airport modernization investment opportunities from public aviation data",
   "engines": {
-    "node": ">=20.10.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "ingest": "tsx src/Scripts/Ingest.ts",
@@ -32,7 +32,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
     "@fastify/cors": "^11.3.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^13.0.3",
     "concurrently": "^9.2.4",
     "csv-parse": "^5.6.0",
     "dotenv": "^16.4.7",

@@ -36,7 +36,7 @@ Ask it questions in plain English — by typing or by voice — and it answers w
 
 ## Requirements
 
-- **Node.js 20.10 or newer** (`node --version`)
+- **Node.js 22 or newer** (`node --version`) — Node 20 reached end-of-life in April 2026
 - An **Anthropic API key** — only for the chat agent; the scoring engine and all tests run without one
 
 No database to install, and **no data ingest required** — the built data snapshot is committed to the repository.
@@ -81,6 +81,9 @@ Create `.env` from `.env.example` and add your key. Only the chat agent needs it
 
 **Port already in use**
 The API uses 3001 and the UI 5173. Override the API port with `PORT=3002 npm run server`.
+
+**`npm install` fails compiling `better-sqlite3`**
+You are on Node 20 or older. `better-sqlite3` ships prebuilt binaries only for supported Node versions, and falls back to compiling from source against V8 APIs that have since changed. Upgrade to Node 22 or newer — npm deletes `node_modules` entirely when a package fails to build, so the failure can look like nothing installed at all.
 
 </details>
 
