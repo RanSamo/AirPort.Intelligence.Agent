@@ -191,7 +191,6 @@ Airports are scored on four questions: **is capacity binding today**, **would ne
 
 ## Documentation
 
-- **`DESIGN.md`** — scoring methodology, key tradeoffs, and where AI is used
 - **`CLAUDE.md`** — engineering detail: verified data sources, investigated dead ends, code conventions, decision log
 
 ## Project layout
