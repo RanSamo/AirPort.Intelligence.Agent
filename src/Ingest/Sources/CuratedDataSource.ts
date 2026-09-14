@@ -56,30 +56,43 @@ export class CuratedDataSource implements IIngestSource {
     return outcome;
   }
 
+  /**
+   * Loads both state-defined regions (New England) and airport-defined metro
+   * areas (the LA area). They share a table because both answer the same
+   * question — "which airports does this name refer to" — and differ only in
+   * how that set is expressed.
+   */
   private LoadRegions() {
     const file = JSON.parse(readFileSync(RegionsPath, 'utf8')) as RegionsFile;
 
     const insert = this.database.Prepare<unknown>(`
-      INSERT INTO regions (region_id, label, aliases, states)
-      VALUES (@regionId, @label, @aliases, @states)
+      INSERT INTO regions (region_id, label, aliases, states, airport_codes)
+      VALUES (@regionId, @label, @aliases, @states, @airportCodes)
       ON CONFLICT(region_id) DO UPDATE SET
-        label   = excluded.label,
-        aliases = excluded.aliases,
-        states  = excluded.states
+        label         = excluded.label,
+        aliases       = excluded.aliases,
+        states        = excluded.states,
+        airport_codes = excluded.airport_codes
     `);
 
+    const entries = [
+      ...file.regions.map((region) => ({ ...region, airportCodes: [] as string[] })),
+      ...(file.metros ?? []).map((metro) => ({ ...metro, states: [] as string[] })),
+    ];
+
     this.database.Transaction(() => {
-      for (const region of file.regions) {
+      for (const region of entries) {
         insert.run({
           regionId: region.id,
           label: region.label,
           aliases: JSON.stringify(region.aliases),
           states: JSON.stringify(region.states),
+          airportCodes: JSON.stringify(region.airportCodes),
         });
       }
     });
 
-    return file.regions.length;
+    return entries.length;
   }
 
   private LoadFacilities() {

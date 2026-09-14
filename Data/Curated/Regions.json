@@ -98,5 +98,73 @@
       "aliases": ["territories", "us territories", "caribbean and pacific territories"],
       "states": ["PR", "VI", "GU", "AS", "MP", "U-A"]
     }
+  ],
+
+  "$metrosComment": [
+    "Metro areas, defined as explicit airport lists because they do not map onto state boundaries.",
+    "",
+    "These also fix a real resolution failure. Free-text search on a short query like 'LA' does a",
+    "substring match and returns AtLanta, DalLas and OrLando before it returns LAX. Colloquial",
+    "metro names are common in real questions ('compare LA and Santa Ana'), so they are resolved",
+    "from this table rather than guessed at.",
+    "",
+    "A metro deliberately resolves to MULTIPLE airports so the agent asks which one the user meant",
+    "instead of silently picking the biggest."
+  ],
+  "metros": [
+    {
+      "id": "los_angeles",
+      "label": "Los Angeles area",
+      "aliases": ["la", "l.a.", "los angeles", "socal", "southern california", "greater los angeles"],
+      "airportCodes": ["LAX", "BUR", "LGB", "ONT", "SNA"]
+    },
+    {
+      "id": "new_york",
+      "label": "New York City area",
+      "aliases": ["nyc", "new york", "new york city", "ny metro", "tri-state"],
+      "airportCodes": ["JFK", "LGA", "EWR", "HPN", "ISP"]
+    },
+    {
+      "id": "bay_area",
+      "label": "San Francisco Bay Area",
+      "aliases": ["bay area", "sf", "san francisco bay", "sf bay area", "the bay"],
+      "airportCodes": ["SFO", "OAK", "SJC"]
+    },
+    {
+      "id": "washington_dc",
+      "label": "Washington DC area",
+      "aliases": ["dc", "washington", "washington dc", "the capital", "dmv"],
+      "airportCodes": ["DCA", "IAD", "BWI"]
+    },
+    {
+      "id": "chicago",
+      "label": "Chicago area",
+      "aliases": ["chicago", "chicagoland"],
+      "airportCodes": ["ORD", "MDW", "RFD"]
+    },
+    {
+      "id": "dallas_fort_worth",
+      "label": "Dallas-Fort Worth area",
+      "aliases": ["dallas", "dfw metroplex", "fort worth", "metroplex"],
+      "airportCodes": ["DFW", "DAL"]
+    },
+    {
+      "id": "houston",
+      "label": "Houston area",
+      "aliases": ["houston"],
+      "airportCodes": ["IAH", "HOU"]
+    },
+    {
+      "id": "miami_south_florida",
+      "label": "South Florida",
+      "aliases": ["miami", "south florida", "sofla"],
+      "airportCodes": ["MIA", "FLL", "PBI"]
+    },
+    {
+      "id": "boston",
+      "label": "Boston area",
+      "aliases": ["boston", "greater boston"],
+      "airportCodes": ["BOS", "MHT", "PVD"]
+    }
   ]
 }

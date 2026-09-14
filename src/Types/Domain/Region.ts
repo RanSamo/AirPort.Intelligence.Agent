@@ -14,7 +14,13 @@ export interface RegionDefinition {
   label: string;
   /** Alternative phrasings a user might type, lowercased. */
   aliases: string[];
+  /** State-defined regions, e.g. New England. Empty for metro areas. */
   states: UsStateCode[];
+  /**
+   * Airport-defined regions (metro areas), which do not follow state lines.
+   * Empty for state-defined regions.
+   */
+  airportCodes: string[];
 }
 
 export interface RegionsById {
@@ -23,7 +29,8 @@ export interface RegionsById {
 
 /** Shape of Data/Curated/Regions.json. */
 export interface RegionsFile {
-  regions: RegionDefinition[];
+  regions: Omit<RegionDefinition, 'airportCodes'>[];
+  metros: Omit<RegionDefinition, 'states'>[];
 }
 
 /** Geographic proximity query, e.g. "airports within 100km of LAX". */

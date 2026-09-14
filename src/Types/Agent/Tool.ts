@@ -11,9 +11,10 @@ import type { SourceCitation } from '../Data/Source';
 export type ToolName =
   | 'resolve_airports'
   | 'get_airport_profile'
-  | 'get_metrics'
   | 'rank_airports'
+  | 'screen_airports'
   | 'compare_airports'
+  | 'find_relief_airports'
   | 'explain_score'
   | 'estimate_unmet_demand'
   | 'get_haul_mix'

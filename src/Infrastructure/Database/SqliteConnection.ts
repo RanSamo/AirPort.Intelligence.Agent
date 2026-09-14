@@ -43,6 +43,8 @@ export class SqliteConnection {
     this.EnsureColumn('traffic_months', 'domestic_departures', 'INTEGER NOT NULL DEFAULT 0');
     this.EnsureColumn('traffic_months', 'domestic_seats', 'INTEGER NOT NULL DEFAULT 0');
     this.EnsureColumn('traffic_months', 'passenger_miles_avg', 'REAL NOT NULL DEFAULT 0');
+    // Metro areas resolve to explicit airport lists rather than state sets.
+    this.EnsureColumn('regions', 'airport_codes', "TEXT NOT NULL DEFAULT '[]'");
   }
 
   public EnsureColumn(table: string, column: string, definition: string) {

@@ -102,6 +102,14 @@ function Validate(config: ScoringConfig) {
     }
   }
 
+  if (!config.universe) throw new InvalidScoringConfigError('missing "universe" section');
+  if (config.universe.minAnnualPassengers < 0) {
+    throw new InvalidScoringConfigError('universe.minAnnualPassengers must not be negative');
+  }
+  if (config.universe.nationalCandidateLimit < 1) {
+    throw new InvalidScoringConfigError('universe.nationalCandidateLimit must be at least 1');
+  }
+
   if (!config.sensitivity) throw new InvalidScoringConfigError('missing "sensitivity" section');
   if (config.sensitivity.draws < 1) {
     throw new InvalidScoringConfigError('sensitivity.draws must be at least 1');

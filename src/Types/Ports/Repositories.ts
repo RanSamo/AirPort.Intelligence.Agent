@@ -61,6 +61,14 @@ export interface AirportFilter {
   regionId?: string;
   iataCodes?: IataCode[];
   requiresOnTimeReporting?: boolean;
+  /**
+   * Annual passenger floor. Excludes general-aviation fields that logged a
+   * handful of charter passengers. Defaults to the configured
+   * commercial-service threshold when omitted.
+   */
+  minAnnualPassengers?: number;
+  /** Caps how many candidates are returned, largest first. */
+  limit?: number;
 }
 
 export interface IAirportRepository {

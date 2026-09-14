@@ -69,6 +69,19 @@
     }
   },
 
+  "$universeComment": [
+    "Which airports count as candidates. The snapshot holds every airport BTS reports, including",
+    "general-aviation fields that logged a few charter passengers. Ranking the Atlanta metro",
+    "returned Gwinnett County (12 annual passengers) and Lee Gilmer (7) next to Hartsfield-Jackson.",
+    "",
+    "2,500 is the FAA commercial-service threshold. Kept deliberately low: the point is to exclude",
+    "noise, not to pre-judge which small airports are interesting. Callers can override it."
+  ],
+  "universe": {
+    "minAnnualPassengers": 2500,
+    "nationalCandidateLimit": 400
+  },
+
   "$sensitivityComment": [
     "The weights below are judgement calls, not facts. Sensitivity analysis resamples them and",
     "re-ranks, so the agent can distinguish a real finding from an artefact of how they were set.",

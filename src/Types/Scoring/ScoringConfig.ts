@@ -135,6 +135,26 @@ export interface ScoringConfig {
   scale: ScaleConfig;
 
   sensitivity: SensitivityConfig;
+
+  universe: UniverseConfig;
+}
+
+/**
+ * Which airports count as candidates at all.
+ *
+ * The snapshot holds every airport BTS reports, including general-aviation
+ * fields that logged a handful of charter passengers in a year. Ranking
+ * Atlanta's metro returned Gwinnett County (12 passengers) and Lee Gilmer
+ * (7) alongside Hartsfield-Jackson, which is noise rather than analysis.
+ */
+export interface UniverseConfig {
+  /**
+   * Annual passenger floor for an airport to be treated as a candidate.
+   * Defaults to the FAA commercial-service threshold of 2,500 enplanements.
+   */
+  minAnnualPassengers: number;
+  /** Cap on a national ranking before scoring, to keep responses readable. */
+  nationalCandidateLimit: number;
 }
 
 export interface SensitivityConfig {

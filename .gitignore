@@ -16,3 +16,11 @@ ImportantNotesForMe.txt
 # NOTE: Data/Snapshot/Airports.db is intentionally NOT ignored.
 # The built snapshot is committed so a reviewer can clone and run
 # immediately without a 10-25 minute ingest.
+#
+# Its SQLite WAL sidecars are transient and must not be committed.
+Data/Snapshot/*.db-wal
+Data/Snapshot/*.db-shm
+
+# Local server logs
+server.log
+server.err

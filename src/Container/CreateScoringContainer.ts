@@ -1,11 +1,16 @@
 import { AggregatorFactory } from '../Scoring/Aggregators/AggregatorFactory';
 import { ArithmeticAggregator } from '../Scoring/Aggregators/ArithmeticAggregator';
+import { CachedHttpFetcher } from '../Infrastructure/Http/CachedHttpFetcher';
 import { ConsoleLogger } from '../Infrastructure/Logging/ConsoleLogger';
+import { FileSystemHttpCache } from '../Infrastructure/Http/FileSystemHttpCache';
+import { HttpCacheDirectory } from '../Config/Paths';
+import { SystemClock } from '../Infrastructure/Clock/SystemClock';
 import { CoverageEvaluator } from '../Scoring/Coverage/CoverageEvaluator';
 import { FeasibilityAdjuster } from '../Scoring/Feasibility/FeasibilityAdjuster';
 import { GeometricAggregator } from '../Scoring/Aggregators/GeometricAggregator';
 import { LoadScoringConfig } from '../Config/LoadScoringConfig';
 import { PillarCalculator } from '../Scoring/Pillars/PillarCalculator';
+import { ReliefAnalyzer } from '../Scoring/Relief/ReliefAnalyzer';
 import { RobustZNormalizer } from '../Scoring/Normalizers/RobustZNormalizer';
 import { ScaleAdjuster } from '../Scoring/Scale/ScaleAdjuster';
 import { ScoringEngine } from '../Scoring/ScoringEngine';
@@ -18,8 +23,10 @@ import { SqliteConnection } from '../Infrastructure/Database/SqliteConnection';
 import { SqliteFacilityRepository } from '../Repositories/SqliteFacilityRepository';
 import { SqliteMetricRepository } from '../Repositories/SqliteMetricRepository';
 import { SqliteTrafficRepository } from '../Repositories/SqliteTrafficRepository';
+import { UnmetDemandAnalyzer } from '../Scoring/Spill/UnmetDemandAnalyzer';
 import { WaterfallBuilder } from '../Scoring/Explain/WaterfallBuilder';
 
+import type { IHttpFetcher } from '../Types/Ports/Fetchers';
 import type { ILogger } from '../Types/Ports/Logger';
 import type { LogLevel } from '../Infrastructure/Logging/ConsoleLogger';
 import type { ScoringConfig } from '../Types/Scoring/ScoringConfig';
@@ -46,8 +53,12 @@ export interface ScoringContainer extends ScoringDependencies {
   config: ScoringConfig;
   scoreVersion: string;
   spillModel: SpillModel;
+  unmetDemandAnalyzer: UnmetDemandAnalyzer;
   scoringEngine: ScoringEngine;
+  reliefAnalyzer: ReliefAnalyzer;
   sensitivityAnalyzer: SensitivityAnalyzer;
+  /** Request-time HTTP, used only by live tools. Never touched by scoring. */
+  liveFetcher: IHttpFetcher;
 }
 
 export interface ScoringContainerOptions {
@@ -67,12 +78,14 @@ export function CreateScoringContainer(options: ScoringContainerOptions = {}) {
     overrides.database ??
     new SqliteConnection(options.databasePath ?? SnapshotDatabasePath, { readonly: options.readonly ?? true });
 
-  const airportRepository = overrides.airportRepository ?? new SqliteAirportRepository(database);
+  const airportRepository =
+    overrides.airportRepository ?? new SqliteAirportRepository(database, config.universe.minAnnualPassengers);
   const metricRepository = overrides.metricRepository ?? new SqliteMetricRepository(database);
   const facilityRepository = overrides.facilityRepository ?? new SqliteFacilityRepository(database);
   const trafficRepository = overrides.trafficRepository ?? new SqliteTrafficRepository(database);
   const congestionRepository = overrides.congestionRepository ?? new SqliteCongestionRepository(database);
 
+  const spillModel = new SpillModel(config.spill.kFactor);
   const normalizer = new RobustZNormalizer(config);
   const aggregatorFactory = new AggregatorFactory(new GeometricAggregator(), new ArithmeticAggregator());
 
@@ -89,6 +102,8 @@ export function CreateScoringContainer(options: ScoringContainerOptions = {}) {
     config,
   );
 
+  const reliefAnalyzer = new ReliefAnalyzer(airportRepository, metricRepository, facilityRepository, scoringEngine);
+
   const container: ScoringContainer = {
     logger,
     database,
@@ -99,9 +114,12 @@ export function CreateScoringContainer(options: ScoringContainerOptions = {}) {
     congestionRepository,
     config,
     scoreVersion,
-    spillModel: new SpillModel(config.spill.kFactor),
+    spillModel,
+    unmetDemandAnalyzer: new UnmetDemandAnalyzer(spillModel, trafficRepository, congestionRepository),
     scoringEngine,
+    reliefAnalyzer,
     sensitivityAnalyzer: new SensitivityAnalyzer(scoringEngine, config),
+    liveFetcher: new CachedHttpFetcher(new FileSystemHttpCache(HttpCacheDirectory, new SystemClock()), logger),
   };
   return container;
 }

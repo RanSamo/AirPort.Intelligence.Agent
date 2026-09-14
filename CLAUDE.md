@@ -390,6 +390,15 @@ One-time ingest: ~372 MB download for 12 months of OTP, roughly **10–25 minute
 
 **L4 rule:** keep the system prompt byte-stable — no `new Date()` in it (put "as of" dates in tool results). Verify with `usage.cache_read_input_tokens`; zero across turns means something is silently invalidating.
 
+### 7.2a ⚠️ Agent-layer gotchas found the hard way
+
+| Gotcha | Detail |
+|---|---|
+| **Import `zod/v4`, not `zod`** | The SDK's `betaZodTool` is typed against the v4 API, which zod 3.25 ships under the `zod/v4` subpath. Importing from `'zod'` gives v3 classic types and **every tool fails to typecheck**. |
+| **Tools must use the RECENT window** | `ToolContext.trafficRange` is the full 2015-2026 history. Tools describing *current* state must use `recentTrafficRange` (last 12 months). Reading the full range reported SFO as 25.3% international when the current figure is 28.9%, and ANC as 1.22% when it is 1.36%. |
+| **Metro names beat scraped aliases** | `resolve_airports` checks curated metro aliases **before** the code lookup. Two reasons: `LIKE '%la%'` matches At**la**nta/Dal**la**s/Or**la**ndo ahead of LAX, and IATA *metropolitan* codes leak in from OurAirports keywords — "NYC" is listed on Caldwell Essex County, so a code lookup sent New York City to a GA field in New Jersey. |
+| **Piped stdin needs its own path** | `readline` emits `close` the moment a pipe ends, discarding buffered lines and rejecting the next `question()`. `Chat.ts` reads all of stdin up front when `!process.stdin.isTTY`, which also makes scripted multi-turn conversations testable. |
+
 ### 7.3 Agent layer
 - `@anthropic-ai/sdk` → `client.beta.messages.toolRunner` with `betaZodTool`
 - Model **`claude-opus-5`**, `thinking: { type: "adaptive" }`, `output_config: { effort: "medium" }` (raise to `high` for ranking questions), `stream: true`
@@ -700,7 +709,53 @@ npm run verify:coverage    # audits snapshot against live upstream T-100
 - [x] ~~Scoring engine~~ — complete: normalizer, aggregators, pillars, coverage, feasibility, scale, waterfall, spill, sensitivity
 - [x] ~~Repositories, MetricComputationService~~ — complete
 - [x] ~~Tests~~ — 81 passing
-- [ ] **Agent layer** — tools, Zod schemas, system prompt, tool-result cache, CLI chat *(needs `ANTHROPIC_API_KEY`)*
+- [x] ~~Agent layer~~ — 9 tools, system prompt, session memory, CLI chat. Verified live on benchmark Q2/Q3/Q4 plus a multi-turn follow-up
 - [ ] Fastify + SSE server, React UI, voice
-- [ ] Agent evals on the 4 benchmark questions
 - [ ] DESIGN.md, README
+
+### Live behaviour confirmed (2026-09-13)
+- **Q3 (Anchorage haul mix)** — stated the domestic-only basis unprompted, quantified the qualification, noted freighters are absent
+- **Q4 (SFO unmet demand)** — found the seasonality itself (June spill 19.5% vs January 4.6%), read the negative upgauging trend correctly, spotted that seat CAGR ≈ passenger CAGR means capacity is exactly tracking demand
+- **Q2 ("LA")** — refused to guess, listed all five LA-basin airports, noticed SNA was already in the user's list, flagged that the domestic-only caveat *matters unevenly* between LAX and SNA
+- **Follow-up** — "how confident are you in that" resolved to the prior airports and profile with nothing restated; the agent then **walked back its own claim** (19.82% vs 19.81% "is one basis point"), flagged that the biggest gap was the *modeled* metric, and observed that 100% rank stability is partly a two-airport artefact
+
+## 15a. Deliberately out of scope — considered, designed, not built
+
+These were evaluated and consciously left out. Recording the reasoning so it is clear they were decisions, not oversights. Both are summarised in `DESIGN.md` under future work.
+
+### Conversation persistence (designed, not built — ~3 hrs)
+
+**Today:** `SessionId` is generated per page load and the server keeps agents in an in-memory object. Follow-ups work perfectly *within* a session; nothing survives a refresh or a server restart.
+
+**Why not a quick fix.** Persisting the UI transcript to `localStorage` would be **worse than nothing**. The conversation would reappear while the server-side agent started empty, so "compare it to the other one" would silently fail — an interface that *looks* like it remembers while the agent does not. It is server-side or not at all.
+
+**The design, if picked up:**
+
+| Layer | Work |
+|---|---|
+| Schema | `conversations (id, title, created_at, updated_at)` + `messages (id, conversation_id, role, content_json, created_at)` |
+| Repository | `SqliteConversationRepository` implementing a new `IConversationRepository` port |
+| `SessionStore` | Read/write through the repository instead of an in-memory array |
+| `AgentService` | Rehydrate message history by conversation id on first use |
+| API | `GET /api/conversations`, `GET /api/conversations/:id`, `DELETE /api/conversations/:id` |
+| UI | Sidebar list, click to switch, title from the first question truncated |
+
+**The one genuinely fiddly part:** Anthropic content blocks must round-trip *exactly*. Assistant messages carry thinking blocks that have to be replayed unchanged on the same model, so `content_json` must be stored faithfully rather than flattened to text. A lossy serialization would appear to work and then degrade reasoning quality in ways that are very hard to diagnose.
+
+**Why deferred:** the brief asks for conversational follow-up (built), a chat interface (built) and names *voice* as the bonus. History is not requested, and it is the one feature every chat app already has — it would not differentiate, where the relief analyzer and sensitivity analysis do.
+
+### Transcript export (worth building — ~30 min)
+
+Copy or download a conversation as Markdown, **including the tool trace**.
+
+Arguably more valuable to the actual user than a history sidebar: an analyst who just got a good answer wants it in an investment memo, not in a list of old chats. Shipping the tool trace alongside the prose means the memo carries its own provenance — every figure traceable to the deterministic call that produced it.
+
+Cheap, and it serves the job rather than the interface.
+
+### Offline verification (no tokens spent)
+```bash
+npm run verify:all   # typecheck + 81 unit tests + config alignment
+                     # + 8 tool scenarios + 7 resolution cases
+npm run tools:preview  # exactly what the model sees when choosing a tool
+```
+`tools:test` and `test:resolution` exercise the full deterministic path — schemas, engine wiring, envelopes, caveats, exclusions — without an API key. If those pass and a live answer is still wrong, the problem is prompting or tool selection, not the data path.
