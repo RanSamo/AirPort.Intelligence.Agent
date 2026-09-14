@@ -67,6 +67,23 @@ OPENSKY_CLIENT_SECRET=
 
 > **Check the install without spending anything:** run `npm run rank`. It produces a full national ranking using only local data — no API key, no network. If that works, everything is wired up correctly.
 
+<details>
+<summary><strong>Troubleshooting</strong></summary>
+
+**`sh: tsx: command not found` or `sh: concurrently: command not found`**
+Dependencies were not installed at the repository root. Run `npm install` there — not inside `web/`.
+
+**`Cannot find module` for a React or Vite package**
+The web interface has its own dependencies. Run `npm run web:install`.
+
+**`ANTHROPIC_API_KEY is not set`**
+Create `.env` from `.env.example` and add your key. Only the chat agent needs it — `npm run rank`, `npm test` and `npm run verify:all` all work without one.
+
+**Port already in use**
+The API uses 3001 and the UI 5173. Override the API port with `PORT=3002 npm run server`.
+
+</details>
+
 ---
 
 ## Running it
