@@ -4,7 +4,7 @@ import { BuildSystemPrompt } from './Prompt/SystemPrompt';
 import { CreateToolRegistry } from './Tools/ToolRegistry';
 import { SessionStore } from './Session/SessionStore';
 import { ToolContext } from './Tools/ToolContext';
-import type { ChatStreamEvent } from '../Types/Agent/Session';
+import type { ChatStreamEvent, TurnUsage } from '../Types/Agent/Session';
 import type { ScoringContainer } from '../Container/CreateScoringContainer';
 
 /**
@@ -82,6 +82,11 @@ export class AgentService {
       stream: true,
     });
 
+    // Summed across every API call in the turn. The tool runner calls the API
+    // once per tool round trip, so a three-tool answer is four calls - and each
+    // one after the first should read the tools + system prefix from cache.
+    const usage: TurnUsage = { apiCalls: 0, inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+
     try {
       for await (const stream of runner) {
         for await (const event of stream) {
@@ -91,6 +96,12 @@ export class AgentService {
         }
 
         const message = await stream.finalMessage();
+
+        usage.apiCalls += 1;
+        usage.inputTokens += message.usage.input_tokens;
+        usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0;
+        usage.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0;
+        usage.outputTokens += message.usage.output_tokens;
 
         // Tool calls are emitted once the message completes: the arguments
         // arrive as a partial JSON stream and are only valid at the end.
@@ -109,7 +120,7 @@ export class AgentService {
       const final = await runner.done();
       if (final) this.session.Append({ role: 'assistant', content: final.content });
 
-      yield { type: 'done' };
+      yield { type: 'done', usage };
     } catch (error) {
       yield { type: 'error', message: this.DescribeError(error) };
     }

@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline/promises';
 
 import { AgentService } from '../Agent/AgentService';
 import { CreateScoringContainer } from '../Container/CreateScoringContainer';
+import { FormatTurnUsage } from '../Agent/Usage/FormatTurnUsage';
 
 /**
  * Conversational CLI.
@@ -13,6 +14,7 @@ import { CreateScoringContainer } from '../Container/CreateScoringContainer';
  *
  *   npm run chat
  *   npm run chat -- "What is the unmet demand at SFO and why?"
+ *   npm run chat -- --usage     (print token usage, including prompt-cache reads, after each answer)
  */
 
 const Divider = '-'.repeat(72);
@@ -26,7 +28,7 @@ function FormatToolCall(name: string, input: unknown) {
   return `  [tool] ${name}${rendered ? ` ${rendered}` : ''}`;
 }
 
-async function Ask(agent: AgentService, question: string) {
+async function Ask(agent: AgentService, question: string, showUsage: boolean) {
   let wroteText = false;
 
   for await (const event of agent.Ask(question)) {
@@ -42,6 +44,9 @@ async function Ask(agent: AgentService, question: string) {
     }
     if (event.type === 'error') {
       process.stderr.write(`\n  error: ${event.message}\n`);
+    }
+    if (event.type === 'done' && showUsage && event.usage) {
+      process.stdout.write(`\n\n  [usage] ${FormatTurnUsage(event.usage)}`);
     }
   }
   process.stdout.write('\n');
@@ -72,9 +77,10 @@ async function Main() {
   const meta = container.trafficRepository.GetAvailableRange();
   const congestion = container.congestionRepository.GetAvailableRange();
 
+  const showUsage = process.argv.includes('--usage');
   const oneShot = process.argv.slice(2).filter((token) => !token.startsWith('--')).join(' ');
   if (oneShot) {
-    await Ask(agent, oneShot);
+    await Ask(agent, oneShot, showUsage);
     container.database.Close();
     return;
   }
@@ -88,7 +94,7 @@ async function Main() {
     for (const question of piped) {
       if (question === 'exit' || question === 'quit') break;
       process.stdout.write(`\n> ${question}\n`);
-      await Ask(agent, question);
+      await Ask(agent, question, showUsage);
     }
     container.database.Close();
     return;
@@ -107,7 +113,7 @@ async function Main() {
     if (!question) continue;
     if (question === 'exit' || question === 'quit') break;
 
-    await Ask(agent, question);
+    await Ask(agent, question, showUsage);
   }
 
   readline.close();

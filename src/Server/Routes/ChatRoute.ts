@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { AgentService } from '../../Agent/AgentService';
+import { FormatTurnUsage } from '../../Agent/Usage/FormatTurnUsage';
 import type { ChatStreamEvent } from '../../Types/Agent/Session';
 import type { ScoringContainer } from '../../Container/CreateScoringContainer';
 
@@ -53,6 +54,10 @@ export function RegisterChatRoute(app: FastifyInstance, container: ScoringContai
     try {
       for await (const event of agent.Ask(question)) {
         WriteEvent(reply, event);
+        // Server-side record of prompt-cache behaviour; the UI ignores the field.
+        if (event.type === 'done' && event.usage) {
+          container.logger.Info(`chat turn: ${FormatTurnUsage(event.usage)}`, { sessionId });
+        }
       }
     } catch (error) {
       WriteEvent(reply, {

@@ -1,7 +1,7 @@
 # CLAUDE.md — Airport Investment Intelligence Agent
 
 > Context file for Claude Code. Everything needed to work on this project without prior chat history.
-> **Last updated:** 2026-09-12
+> **Last updated:** 2026-10-21 — audited against the code. Where this file once described plans, it now says what is actually built.
 
 ---
 
@@ -98,7 +98,8 @@ https://data.transportation.gov/resource/r495-tyji.json
 ### 3.4 FAA ACAIS enplanements — official enplanements + hub class
 - **URL:** `https://www.faa.gov/airports/planning_capacity/passenger_allcargo_stats/passenger/ARP-cy2024-all-enplanements.xlsx` (151 KB)
 - **Auth:** none · CY2024 final. CY2025 final expected late Aug 2026.
-- Used as an authoritative cross-check for enplanements and hub classification.
+- Intended as an authoritative cross-check for enplanements and hub classification.
+- **Status: NOT ingested.** No source class exists; only a `DataSourceId` type comment mentions it. Hub class is computed from T-100 instead.
 
 ### 3.5 FAA NAS Status — live delay programs
 - **URL:** `https://nasstatus.faa.gov/api/airport-status-information`
@@ -109,6 +110,7 @@ https://data.transportation.gov/resource/r495-tyji.json
 - **Auth:** **REQUIRED** — OAuth2 client-credentials (basic auth retired March 2026). Anonymous requests return **403**. Tokens last ~30 min.
 - **Status in this project: strictly optional.** Credential-gated via `.env`. **Never feeds the ranking.** If `OPENSKY_CLIENT_ID` is absent the tool is simply not registered and everything else works identically.
 - **Purpose:** recency bridge (BTS lags ~3 months) and live-API demo credibility.
+- **Status: NOT implemented.** Only URL constants (`DataSources.ts`) and a citation entry (`SourceCitations.ts`) exist — no tool, no fetcher. Live status comes from FAA NAS Status (`get_live_status`) alone.
 
 ---
 
@@ -218,7 +220,7 @@ Worse, the bias correlates with international exposure, which would reward inter
 `traffic_months` therefore stores `domestic_departures`, `domestic_seats` and `passenger_miles_avg` alongside the totals.
 
 **Pillar 4 — Feasibility** — a **multiplier (0.5–1.05)**, not a weighted adder
-`slot_controlled` (JFK/LGA/DCA → ×0.8), `perimeter_rule` (DCA/LGA → ×0.9), `land_constrained` (×0.85 airfield but **×1.05 terminal-only** — when vertical expansion is the only option, terminal capex *is* the thesis), `spill_absorption` (competing capacity within 100 km), `recent_capex` (FAA AIP/BIL grants per enplanement)
+`slot_controlled` (JFK/LGA/DCA → ×0.8), `perimeter_rule` (DCA/LGA → ×0.9), `land_constrained` (×0.85 airfield but **×1.05 terminal-only** — when vertical expansion is the only option, terminal capex *is* the thesis). These three are the only flags implemented (`FeasibilityAdjuster.ts`). `spill_absorption` and `recent_capex` were designed but **not built**.
 
 ### 6.2 Composite
 
@@ -260,14 +262,23 @@ A is congested but unmonetizable; B is balanced. Geometric refuses that trade �
 
 **Gotcha:** geometric is brutal near zero. **Clamp subscores to a floor of ~1** or one missing pillar nukes an airport.
 
-**The aggregation mode is user-switchable** (`ScoringConfig.json` → `"aggregation": "geometric" | "arithmetic"`), exposed as a UI toggle and a `rank_airports` tool parameter. Implemented as an injected strategy via `AggregatorFactory`, never a branch inside the math.
+**The aggregation mode is user-switchable** (`ScoringConfig.json` → `"aggregation": "geometric" | "arithmetic"`), exposed as an `aggregation` parameter on `rank_airports`, `explain_score` and `test_score_sensitivity` (ask the agent to re-rank), and as `npm run rank -- --aggregation`. Deliberately **not** a UI toggle (DESIGN.md §3). Implemented as an injected strategy via `AggregatorFactory`, never a branch inside the math.
 
 ### 6.3 Normalization
+Order as executed in `RobustZNormalizer.Normalize()`:
 1. **Winsorize** each raw metric at p5/p95 within cohort
-2. **Robust z-score:** `z = (x − median) / (1.4826 × MAD)` — median/MAD, not mean/stdev (aviation metrics are heavily skewed)
-3. **Logistic squash:** `s = 100 / (1 + e^(−1.1z))` — bounded, monotone, far less brittle than min-max
-4. **Peer cohorts** = FAA hub class. Report **both** national score and within-cohort percentile (comparing BOS to BDL nationally is meaningless)
-5. Flip sign for metrics where lower is better
+2. **Robust z-score:** `z = (x − median) / (1.4826 × MAD)` — median/MAD, not mean/stdev (aviation metrics are heavily skewed). Zero MAD → z = 0 (cohort carries no information, score at midpoint)
+3. **Flip sign** of z for metrics where lower is better
+4. **Logistic squash:** `s = 100 / (1 + e^(−1.1z))` — bounded, monotone, far less brittle than min-max
+5. **Floor** at `subscoreFloor` (1.0)
+
+**Peer cohorts** = FAA hub class. Report **both** national score and within-cohort percentile (comparing BOS to BDL nationally is meaningless).
+
+**When it runs:** only at query time, in memory, never stored. `ingest` writes monthly facts; `build:metrics` writes the 14 **raw** metric values; `ScoringEngine.PrepareUniverse()` normalizes on every scoring call.
+- `BuildCohortStats()` groups values by `hubClass|metricId` across **all US airports** — the cohort is always national. A regional question filters the ranking afterwards; it never changes the peer group.
+- Median, MAD and the p5/p95 bounds are computed from the **unclamped** values; winsorizing only clamps the airport being scored.
+- Normalization never depends on weights, so sensitivity analysis prepares once and re-weights 400× (`ScoreSubsetFromPrepared`).
+- Tuning: `ScoringConfig.json` → `normalization`.
 
 ### 6.4 Missing data — NEVER impute
 Renormalize weights over *available* metrics within each pillar; emit `coverage = Σ(available weights) / Σ(total weights)`. Pillar coverage < 0.6 → `low_confidence`. Overall confidence = min pillar coverage.
@@ -337,18 +348,20 @@ Measured effect: BOS held rank 1 in **100%** of draws under metric-only perturba
 Never emit a bare "insufficient data." Carry structured reasons:
 
 ```ts
+// src/Types/Data/Coverage.ts
 export interface ExclusionReason {
-  airport: IataCode;
+  iata: IataCode;
   airportName: string;
-  code: ExclusionCode;              // 'NO_GATE_DATA' | 'NOT_OTP_REPORTING' | 'BELOW_COVERAGE_THRESHOLD'
+  code: ExclusionCode;              // 'not_otp_reporting' | 'below_coverage_threshold' | 'no_traffic_data'
   missingMetrics: MetricId[];
+  affectedPillar: PillarId | null;
   coverage: number;
   requiredCoverage: number;
-  explanation: string;              // question-aware
+  explanation: string;              // question-aware, rendered verbatim
 }
 ```
 
-Rendered as: *"Ranked 8 of 14 New England airports. Excluded 6 because they have no verified gate count, which the terminal-pressure pillar requires to assess expansion capacity: BGR, HYA, ORH… You can still ask me about any of them individually."*
+Rendered as (DESIGN.md): *"Tweed New Haven is not covered by BTS On-Time Performance reporting, which only includes carriers above 0.5% of US domestic revenue. Without it there are no delay, taxi-time or peak-hour figures, so its capacity pressure cannot be assessed for a terminal expansion comparison."*
 
 Rankings apply a **minimum-coverage filter by default and say so**; any airport remains individually queryable via `get_airport_profile`.
 
@@ -363,9 +376,10 @@ INGEST (offline, one-off)
     → aggregate into in-memory counters → row discarded immediately
   Peak RAM: tens of MB. Raw responses cached on disk in .cache/
 
-SNAPSHOT (persists, committed to git, ~few MB)
-  airport×month congestion · airport×month T-100 · route×month flights
-  · curated facilities · regions · scores
+SNAPSHOT (persists, committed to git, 12 MB)
+  airport×month congestion · airport×month T-100 · airport×month haul mix
+  · metric_values (14 raw metrics) · aliases · curated facilities · regions
+  (no route-level table, no stored scores — scores are computed per query)
 
 QUERY (every chat message)
   reads local SQLite. Sub-millisecond. ZERO network calls for anything
@@ -376,19 +390,20 @@ One-time ingest: ~372 MB download for 12 months of OTP, roughly **10–25 minute
 
 **Not built (demo scope):** scheduled monthly ingest, incremental month-diffing, snapshot migrations. `DESIGN.md` notes these as what production would need.
 
-**Kept:** snapshot stamped with `dataVersion` + `ingestedAt`; cache keys include `configVersion = hash(dataVersion + scoringConfig)`. This is ~10 lines and it guards a real bug — the user-switchable geometric/arithmetic toggle would otherwise serve cached results from the *other* mode.
+**Versioning that exists:** `scoreVersion` = hash of the effective scoring config (`LoadScoringConfig.ts`), written into snapshot meta by `build:metrics` and shown in the UI data panel via `/api/meta`. `configVersion` and `dataVersion` are declared in `Types/Data/Snapshot.ts` but **not computed or used** — nothing keys on them.
 
-### 7.2 Caching tiers
-| Tier | What | Key / TTL |
-|---|---|---|
-| L1 | Raw HTTP responses on disk | `.cache/http/<sha256(url)>.json`; OurAirports 30d, FAA enplanements 30d, OpenSky 15m, NAS status 60s |
-| L2 | Materialized metrics & scores in SQLite | `(icao, period, dataVersion, scoreVersion)` |
-| L3 | Tool results | `sha256(toolName + stableStringify(args) + configVersion)` |
-| L4 | Anthropic prompt caching | `cache_control` breakpoint after tools + system prompt |
+### 7.2 Caching — what is actually built
+| What | Detail |
+|---|---|
+| **HTTP response cache on disk** | `FileSystemHttpCache` + `CachedHttpFetcher`. `.cache/http/<sha256(url)[:32]>.bin` + `.meta.json` sidecar (fetchedAt, TTL). TTLs: OTP zips 30d, OurAirports 30d, T-100 7d, NAS status 60s. Failed partial downloads are invalidated. `.cache/` is **gitignored** — the committed artifact is the snapshot. Used by ingest **and** at runtime by `get_live_status`. |
+| **Precomputed metrics** | `metric_values` in the snapshot. Precomputation, not a cache tier. Scores are **not** stored; they are computed per call. |
+| **Anthropic prompt caching** | `cache_control` on the system prompt (`AgentService.ts`) caches tools + system. Prefix kept byte-stable: prompt built once in the constructor, no dates, fixed tool order (`ToolRegistry.ts`), session context appended as a message. |
 
-**Deliberately NOT built:** embedding/semantic cache. A near-miss hit returning right prose with wrong numbers is worse than no cache.
+**Not built:** a tool-result cache (no `ToolResultCache`; the envelope's `meta.cached` is always `false`). **Deliberately not built:** embedding/semantic cache — a near-miss hit returning right prose with wrong numbers is worse than no cache.
 
-**L4 rule:** keep the system prompt byte-stable — no `new Date()` in it (put "as of" dates in tool results). Verify with `usage.cache_read_input_tokens`; zero across turns means something is silently invalidating.
+**Measured (2026-10-19, live CLI):** cached prefix = **6,362 tokens**. Turn 1 (2 calls): cache write 6,362, read 6,362. Turn 2 (4 calls): read **25,448 = 4 × 6,362**, write 0. Effective input-cost saving ≈ 30% / 64% (reads billed ~0.1×, writes ~1.25× once). Uncached remainder is conversation history + tool results — a second breakpoint there is a roadmap item.
+
+**Usage observability:** `AgentService` sums `usage` across every API call in a turn (`TurnUsage` in `Types/Agent/Session.ts`) and attaches it to the `done` event. `FormatTurnUsage` (`src/Agent/Usage/`) renders one line. The server logs it every turn (`ChatRoute.ts`); the CLI prints it with `npm run chat -- --usage`; in the web demo it is visible in DevTools on the `/api/chat` response. The UI deliberately does not render it.
 
 ### 7.2a ⚠️ Agent-layer gotchas found the hard way
 
@@ -419,7 +434,7 @@ export interface ToolEnvelope<TData> {
 }
 ```
 
-**Tools** (wire names snake_case): `resolve_airports`, `get_airport_profile`, `get_metrics`, `rank_airports`, `compare_airports`, `explain_score`, `estimate_unmet_demand`, `get_haul_mix`, `test_score_sensitivity`, `get_live_status`
+**Tools — 11** (wire names snake_case, order fixed in `ToolRegistry.ts`): `resolve_airports`, `get_airport_profile`, `rank_airports`, `screen_airports`, `compare_airports`, `find_relief_airports`, `explain_score`, `estimate_unmet_demand`, `get_haul_mix`, `test_score_sensitivity`, `get_live_status`. (`get_metrics` was planned and never built.) Metric values carry a `provenance` tag in `get_airport_profile`, `compare_airports`, `explain_score` and `screen_airports`.
 
 **System prompt guardrails:**
 - Every number must come from a tool result. Never estimate.
@@ -431,8 +446,9 @@ export interface ToolEnvelope<TData> {
 - Scope: US commercial-service airports; no construction-cost data, so we rank **opportunity, not IRR**.
 
 ### 7.4 UI
-- **Backend:** Fastify, `POST /api/chat` streaming SSE events `{ type: "text" | "tool_start" | "tool_result" | "done" }`
-- **Frontend:** Vite + React, three panes — Chat, **Agent trace** (every tool call + result, live — the transparency feature), **Score waterfall**
+- **Backend:** Fastify, `POST /api/chat` streaming SSE events `{ type: "text" | "tool_start" | "error" | "done" }` (`tool_result` is declared in the type but **not emitted** by `AgentService`)
+- **Frontend:** Vite + React, three panes — Chat, **Agent trace** (every tool call + its arguments, live — the transparency feature; tool *results* are not shown), **Data panel** (`MetaPanel`: data vintages, scoring config, metric provenance, limitations)
+- **Waterfall:** there is **no waterfall chart in the UI**. Every score carries an exactly-additive waterfall (`WaterfallBuilder`); it surfaces through the `explain_score` tool (narrated by the agent in chat) and `npm run rank -- --explain`
 - **Voice:** Web Speech API (`SpeechRecognition` in, `speechSynthesis` out). No key, no server, no cost. Chrome/Edge only; Safari partial — document it. Behind a `VoiceProvider` interface so Deepgram/ElevenLabs is a one-file swap.
   - **Speak only a 2-sentence TL;DR**, not the full answer — a spoken ranked list is unbearable. Every response opens with one.
 - **Also ship a CLI** (`npm run chat`) — zero-friction for a reviewer, and a fallback if the web build breaks.
@@ -496,9 +512,9 @@ public Resolve(mode: AggregationMode) {
 Constructor injection + a composition root. **No decorators, no `reflect-metadata`, no DI framework.**
 - Interfaces → `src/Types/Ports/`
 - Implementations → feature folders
-- Wiring → `src/Container/CreateCoreContainer.ts`
+- Wiring → `src/Container/CreateScoringContainer.ts` (query side) and `src/Container/CreateIngestContainer.ts` (ingest side)
 
-Tests call `CreateCoreContainer({ airportRepository: new InMemoryAirportRepository(fixtures) })` — no mocking library needed.
+Tests pass in-memory repositories through `CreateScoringContainer({ overrides: { ... } })` / `Tests/Fixtures/InMemoryRepositories.ts` — no mocking library needed.
 
 ---
 
@@ -520,24 +536,25 @@ AirportIntelligenceAgent/
 │   │   ├── Agent/      Tool.ts · Session.ts
 │   │   └── Ports/      Repositories.ts · Fetchers.ts · IngestSources.ts
 │   │                   Scoring.ts · Clock.ts · Logger.ts
-│   ├── Container/      CreateCoreContainer.ts · CreateAgentContainer.ts
-│   ├── Config/         ScoringConfig.json · LoadScoringConfig.ts
+│   ├── Container/      CreateScoringContainer.ts · CreateIngestContainer.ts
+│   ├── Config/         ScoringConfig.json · LoadScoringConfig.ts · DataSources.ts
+│   │                   SourceCitations.ts · Paths.ts
 │   ├── Infrastructure/
 │   │   ├── Http/       CachedHttpFetcher.ts · FileSystemHttpCache.ts
 │   │   ├── Database/   SqliteConnection.ts · Schema.sql
 │   │   ├── Clock/      SystemClock.ts
-│   │   └── Logging/    ConsoleLogger.ts
+│   │   ├── Logging/    ConsoleLogger.ts
+│   │   ├── Math/       NormalDistribution.ts · SeededRandom.ts
+│   │   └── Time/       MonthSequence.ts
 │   ├── Repositories/   SqliteAirportRepository.ts · SqliteMetricRepository.ts
-│   │                   SqliteScoreRepository.ts
+│   │                   SqliteTrafficRepository.ts · SqliteCongestionRepository.ts
+│   │                   SqliteFacilityRepository.ts
 │   ├── Ingest/
-│   │   ├── IngestOrchestrator.ts
+│   │   ├── IngestOrchestrator.ts · AirportCodeResolver.ts
 │   │   ├── Sources/    OurAirportsSource.ts · T100SocrataSource.ts · OtpBulkSource.ts
-│   │   │               FaaEnplanementsSource.ts · CuratedFacilitiesSource.ts
+│   │   │               CuratedDataSource.ts
 │   │   └── Parsers/    CsvStreamParser.ts · ZipEntryReader.ts
-│   ├── Metrics/
-│   │   ├── MetricRegistry.ts · MetricComputationService.ts
-│   │   └── Calculators/ CongestionMetrics.ts · DemandMetrics.ts
-│   │                    MonetizationMetrics.ts · FacilityMetrics.ts
+│   ├── Metrics/        MetricRegistry.ts · MetricComputationService.ts
 │   ├── Scoring/
 │   │   ├── ScoringEngine.ts
 │   │   ├── Normalizers/  RobustZNormalizer.ts
@@ -545,24 +562,32 @@ AirportIntelligenceAgent/
 │   │   │                 AggregatorFactory.ts
 │   │   ├── Pillars/      PillarCalculator.ts
 │   │   ├── Feasibility/  FeasibilityAdjuster.ts
+│   │   ├── Scale/        ScaleAdjuster.ts
 │   │   ├── Explain/      WaterfallBuilder.ts
-│   │   ├── Spill/        SpillModel.ts
+│   │   ├── Spill/        SpillModel.ts · UnmetDemandAnalyzer.ts
+│   │   ├── Relief/       ReliefAnalyzer.ts
 │   │   ├── Sensitivity/  SensitivityAnalyzer.ts
 │   │   └── Coverage/     CoverageEvaluator.ts
 │   ├── Agent/
 │   │   ├── AgentService.ts
-│   │   ├── Prompt/   SystemPrompt.ts · Methodology.ts
-│   │   ├── Tools/    ToolRegistry.ts · ResolveAirportsTool.ts · GetAirportProfileTool.ts
-│   │   │             GetMetricsTool.ts · RankAirportsTool.ts · CompareAirportsTool.ts
-│   │   │             ExplainScoreTool.ts · EstimateUnmetDemandTool.ts
-│   │   │             GetHaulMixTool.ts · TestScoreSensitivityTool.ts · GetLiveStatusTool.ts
-│   │   ├── Cache/    ToolResultCache.ts
+│   │   ├── Prompt/   SystemPrompt.ts
+│   │   ├── Tools/    ToolRegistry.ts · ToolContext.ts · ResolveAirportsTool.ts
+│   │   │             GetAirportProfileTool.ts · RankAirportsTool.ts · ScreenAirportsTool.ts
+│   │   │             CompareAirportsTool.ts · FindReliefAirportsTool.ts · ExplainScoreTool.ts
+│   │   │             EstimateUnmetDemandTool.ts · GetHaulMixTool.ts
+│   │   │             TestScoreSensitivityTool.ts · GetLiveStatusTool.ts
+│   │   ├── Usage/    FormatTurnUsage.ts
 │   │   └── Session/  SessionStore.ts
-│   ├── Server/       App.ts · Routes/ChatRoute.ts · Routes/HealthRoute.ts
-│   └── Scripts/      Ingest.ts · BuildMetrics.ts · Chat.ts
-├── Tests/            Scoring/ · Ingest/ · Fixtures/
-└── web/src/          App.tsx · Components/{ChatPanel,AgentTrace,ScoreWaterfall,
-                      VoiceControl}.tsx · Hooks/useChatStream.ts · Services/VoiceProvider.ts
+│   ├── Suggestions/  SuggestionBuilder.ts
+│   ├── Server/       App.ts · Routes/{ChatRoute,MetaRoute,SuggestionsRoute}.ts
+│   └── Scripts/      Ingest.ts · BuildMetrics.ts · Rank.ts · Chat.ts · InspectSnapshot.ts
+│                     VerifyCoverage.ts · ValidateDomesticConsistency.ts
+│                     ValidateScoringConfig.ts · PreviewTools.ts · TestTools.ts
+│                     TestResolution.ts · TestServerStream.ts
+├── Tests/            Scoring/ · Infrastructure/ · Web/ · Fixtures/
+└── web/src/          App.tsx · Components/{AgentTrace,MetaPanel,Suggestions,Markdown,
+                      Icons}.tsx · Hooks/{useChatStream,useVoice}.ts
+                      · Services/{VoiceProvider,VoiceSelection,SpeechText}.ts
 ```
 
 ---
@@ -574,18 +599,21 @@ npm install
 npm run ingest            # one-off, ~25 min; --only <sources> --from/--to to narrow
 npm run build:metrics     # compute the 14 metrics into the snapshot (<1s)
 npm run rank              # deterministic ranking, no LLM involved
-npm test                  # 81 tests, ~0.7s
+npm test                  # 100 tests, 11 files
 npm run typecheck
+npm run verify:all        # typecheck + tests + config + tool scenarios + resolution, zero tokens
 
 # diagnostics
 npm run inspect           # readable slice of the snapshot; --month --airports
 npm run verify:coverage   # audits snapshot against live upstream T-100
 npm run validate:domestic # domestic/total unit-mixing audit
 npm run validate:config   # registry <-> scoring config alignment
+npm run tools:preview     # exactly what the model sees when choosing a tool
 
-# not yet built
-npm run chat              # CLI chat
-npm run server            # Fastify + SSE backend
+# agent
+npm run chat              # CLI chat; add -- --usage to print token / prompt-cache usage per turn
+npm run server            # Fastify + SSE backend (logs usage every turn)
+npm run dev               # server + web UI → http://localhost:5173
 ```
 
 ### `npm run rank` flags
@@ -635,7 +663,7 @@ OPENSKY_CLIENT_SECRET=...
 | 4–5 | OurAirports + FAA enplanements + regions |
 | 5–9 | **Metrics + scoring + spill + waterfall + sensitivity + coverage**, unit-tested on golden fixtures ← *the graded core* |
 | 9–12 | Tools + Zod schemas + caching + agent loop + system prompt; **CLI chat working end-to-end** |
-| 12–15 | Fastify SSE + React UI + agent trace + waterfall chart |
+| 12–15 | Fastify SSE + React UI + agent trace + data panel |
 | 15–16 | Voice |
 | 16–18 | FAA live status + OpenSky (optional) |
 | 18–20 | Evals on the 4 benchmark questions |
@@ -651,7 +679,7 @@ Originally budgeted 2–3h of manual lookup. Dropped entirely once `peak_hour_pa
 
 ## 13. Tests
 
-`npm test` — **81 tests, 9 files**, Vitest. Runs in ~0.5s with no database and no mocking library: `Tests/Fixtures/InMemoryRepositories.ts` supplies in-memory implementations of the ports, which is the payoff of constructor injection.
+`npm test` — **100 tests, 11 files**, Vitest (the 9 below plus `Tests/Web/VoiceText.test.ts` and `Tests/Web/VoiceSelection.test.ts`). Runs in ~0.5s with no database and no mocking library: `Tests/Fixtures/InMemoryRepositories.ts` supplies in-memory implementations of the ports, which is the payoff of constructor injection.
 
 | File | Guards |
 |---|---|
@@ -665,8 +693,8 @@ Originally budgeted 2–3h of manual lookup. Dropped entirely once `peak_hour_pa
 | `MonthSequence.test.ts` | Month arithmetic across year boundaries; lexical order matches chronological (relied on by every SQL range query) |
 | `Sensitivity.test.ts` | Seeded RNG reproducibility; **same question always yields the same robustness figure**; dominant airport reports 100% stability; **tie detection between airports that trade strengths**; unstable order when quality is similar |
 
-### Still to build: agent evals
-A harness running the 4 benchmark questions, asserting:
+### Still to build: agent evals (roadmap — NOT built)
+A harness running the 4 benchmark questions (plus trap questions), asserting:
 1. The expected tools were called
 2. **Every numeric claim in the answer appears in a tool result** — a cheap automatic hallucination detector
 
@@ -674,7 +702,7 @@ A harness running the 4 benchmark questions, asserting:
 
 ## 14. Built snapshot — measured results (2026-09-12)
 
-`Data/Snapshot/Airports.db` — **9.59 MB**, committed to git.
+`Data/Snapshot/Airports.db` — **12.0 MB** (re-measured 2026-10-19), committed to git.
 
 | | |
 |---|---|
@@ -684,8 +712,14 @@ A harness running the 4 benchmark questions, asserting:
 | Code aliases registered | 662 |
 | Traffic rows (airport × month) | 115,748 |
 | Congestion rows (airport × month) | 4,133 |
-| Regions | 15 |
-| Curated facility entries | 9 (feasibility flags; **0 gate counts so far**) |
+| Haul-mix rows (airport × month) | 4,133 |
+| Metric values | 8,528 — one `period_id`, `latest_12m` |
+| Regions | **24** |
+| Curated facility entries | 9 (feasibility flags only) |
+
+**Table layers.** Monthly fact tables keyed `(iata, month_key)` — `traffic_months`, `congestion_months`, `haul_mix_months` — are collapsed by `build:metrics` into `metric_values` keyed `(iata, metric_id, period_id)`, one raw value per metric. `sample_size` = months that went in (SFO `peak_hour_passengers` = 10 of 12 — missing months are dropped, never imputed). Scoring reads `metric_values`; trend/seasonality tools read the monthly tables.
+
+**Legacy columns:** `facilities.gate_count`, `hourly_capacity` and `runway_*` still exist in `Schema.sql` but are **empty and unused** — leftovers from metrics removed for lack of a source (§4).
 | Traffic coverage | 2015-01 → **2026-04** |
 | Congestion coverage | 2025-07 → **2026-06** (12 months) |
 | Enplanement coverage vs upstream | **99.993%** |
@@ -702,16 +736,19 @@ npm run verify:coverage    # audits snapshot against live upstream T-100
 
 ## 15. Open items
 
-- [ ] `ANTHROPIC_API_KEY` not yet set (not needed for ingest/scoring; needed for the agent layer)
-- [ ] OpenSky account not yet created (optional, never scores)
+- [x] ~~`ANTHROPIC_API_KEY`~~ — set; agent verified live
+- [ ] OpenSky — not implemented (constants only, §3.6). Optional, never scores
 - [x] ~~Gate curation~~ — cancelled; no metric depends on gate counts (§4)
 - [x] ~~Census/BEA API key~~ — cancelled; all three Census metrics removed for lack of an airport→metro crosswalk (§4)
 - [x] ~~Scoring engine~~ — complete: normalizer, aggregators, pillars, coverage, feasibility, scale, waterfall, spill, sensitivity
 - [x] ~~Repositories, MetricComputationService~~ — complete
-- [x] ~~Tests~~ — 81 passing
-- [x] ~~Agent layer~~ — 9 tools, system prompt, session memory, CLI chat. Verified live on benchmark Q2/Q3/Q4 plus a multi-turn follow-up
-- [ ] Fastify + SSE server, React UI, voice
-- [ ] DESIGN.md, README
+- [x] ~~Tests~~ — 100 passing
+- [x] ~~Agent layer~~ — 11 tools, system prompt, session memory, CLI chat. Verified live on benchmark Q2/Q3/Q4 plus a multi-turn follow-up
+- [x] ~~Fastify + SSE server, React UI, voice~~
+- [x] ~~DESIGN.md, README~~
+- [x] ~~Prompt-cache usage logging~~ — measured hitting (§7.2)
+- [ ] Agent eval harness (§13) — roadmap
+- [ ] Emit `tool_result` SSE events so the trace can show returned data — roadmap
 
 ### Live behaviour confirmed (2026-09-13)
 - **Q3 (Anchorage haul mix)** — stated the domestic-only basis unprompted, quantified the qualification, noted freighters are absent
@@ -754,7 +791,7 @@ Cheap, and it serves the job rather than the interface.
 
 ### Offline verification (no tokens spent)
 ```bash
-npm run verify:all   # typecheck + 81 unit tests + config alignment
+npm run verify:all   # typecheck + 100 unit tests + config alignment
                      # + 8 tool scenarios + 7 resolution cases
 npm run tools:preview  # exactly what the model sees when choosing a tool
 ```

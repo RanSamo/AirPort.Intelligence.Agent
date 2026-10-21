@@ -12,6 +12,7 @@ dist/
 # Personal notes (not part of the deliverable)
 PromptsWrote.txt
 ImportantNotesForMe.txt
+txtfiles/
 
 # NOTE: Data/Snapshot/Airports.db is intentionally NOT ignored.
 # The built snapshot is committed so a reviewer can clone and run

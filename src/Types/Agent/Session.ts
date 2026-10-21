@@ -31,6 +31,23 @@ export interface ChatStreamEvent {
   toolResult?: unknown;
   /** Present for 'error'. */
   message?: string;
+  /** Present for 'done'. Token accounting summed over every API call in the turn. */
+  usage?: TurnUsage;
+}
+
+/**
+ * Token usage for one user turn.
+ *
+ * A turn spans several API calls - one per tool round trip - so the counts are
+ * summed across all of them. cacheReadTokens is the evidence that prompt
+ * caching works: it stays at zero if the cached prefix is never reused.
+ */
+export interface TurnUsage {
+  apiCalls: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
 }
 
 export interface SessionRecord {
